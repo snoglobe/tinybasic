@@ -22,6 +22,7 @@ abstract class Stmt {
         fun visitProgramStmt(stmt: ProgramStmt): Unit
         fun visitLineStmt(stmt: LineStmt): Unit
         fun visitMultiStmt(stmt: MultiStmt): Unit
+        fun visitEmptyStmt(stmt: EmptyStmt): Unit
     }
     abstract fun accept(visitor: Visitor)
 }
@@ -56,7 +57,7 @@ data class StringLiteral(val value: String) : Expr() {
     }
 }
 
-data class PrintStmt(val exprs: MutableList<Expr>) : Stmt() {
+data class PrintStmt(val exprs: MutableList<Expr>, val newline: Boolean) : Stmt() {
     override fun accept(visitor: Visitor) {
         visitor.visitPrintStmt(this)
     }
@@ -80,7 +81,7 @@ data class GotoStmt(val line: Expr) : Stmt() {
     }
 }
 
-data class InputStmt(val vars: List<Expr>) : Stmt() {
+data class InputStmt(val vars: List<Variable>) : Stmt() {
     override fun accept(visitor: Visitor) {
         visitor.visitInputStmt(this)
     }
@@ -119,5 +120,11 @@ data class ProgramStmt(val statements: MutableList<Stmt>) : Stmt() {
 data class LineStmt(val line: Int, val statement: MultiStmt) : Stmt() {
     override fun accept(visitor: Visitor) {
         visitor.visitLineStmt(this)
+    }
+}
+
+class EmptyStmt : Stmt() {
+    override fun accept(visitor: Visitor) {
+        visitor.visitEmptyStmt(this)
     }
 }

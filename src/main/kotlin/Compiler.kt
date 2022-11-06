@@ -4,12 +4,6 @@ import TokenType.*
 import org.objectweb.asm.Label
 import java.io.File
 
-enum class Type {
-    Int,
-    String,
-    None
-}
-
 class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor {
     private var className = "Program"
     private val classWriter = ClassWriter(ClassWriter.COMPUTE_FRAMES)
@@ -19,7 +13,6 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
         null, null)
 
     private val variables = mutableMapOf<String, Int>()
-    private val types     = mutableMapOf<String, Type>()
     private val mapped    = mutableListOf<String>()
 
     private val labels    = mutableMapOf<Int, Label>()
@@ -41,29 +34,20 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
                 if (variables[stmt.name] == null) {
                     variables[stmt.name] = variables.size
                 }
-                types[stmt.name] = when(stmt.expr) {
-                    is NumberLiteral -> Type.Int
-                    is StringLiteral -> Type.String
-                    is Variable ->
-                        if(types.containsKey(stmt.expr.name)) {
-                            types[stmt.expr.name]!!
-                        } else
-                            Type.None
-                    is BinOp -> Type.Int
-                    is UnaryOp -> Type.Int
-                    else -> null!!
-                }
             }
             is IfStmt -> {
                 resolveVariables(stmt.thenBranch)
             }
             is InputStmt -> {
                 for(variable in stmt.vars) {
-                    if (variable is Variable) {
-                        if (variables[variable.name] == null) {
-                            variables[variable.name] = variables.size
-                        }
-                        types[variable.name] = Type.Int
+                    if (variables[variable.name] == null) {
+                        variables[variable.name] = variables.size
+                    }
+                    if(variable.name !in mapped) {
+                        methodVisitor.visitLocalVariable(variable.name, "I", null, codeLabel, endLabel, variables[variable.name]!!)
+                        methodVisitor.visitInsn(Opcodes.ICONST_0)
+                        methodVisitor.visitVarInsn(Opcodes.ISTORE, variables[variable.name]!!)
+                        mapped.add(variable.name)
                     }
                 }
             }
@@ -72,25 +56,14 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
             }
         }
 
-        for (variable in variables) {
+        for (variable in variables.entries.toList().subList(1, variables.size)) {
             if(variable.key in mapped) {
                 continue
             }
-            when(types[variable.key]) {
-                Type.Int -> {
-                    methodVisitor.visitLocalVariable(variable.key, "I", null, codeLabel, endLabel, variable.value)
-                    methodVisitor.visitInsn(Opcodes.ICONST_0)
-                    methodVisitor.visitVarInsn(Opcodes.ISTORE, variable.value)
-                    mapped.add(variable.key)
-                }
-                Type.String -> {
-                    methodVisitor.visitLocalVariable(variable.key, "Ljava/lang/String;", null, codeLabel, endLabel, variable.value)
-                    methodVisitor.visitLdcInsn("")
-                    methodVisitor.visitVarInsn(Opcodes.ASTORE, variable.value)
-                    mapped.add(variable.key)
-                }
-                else -> {}
-            }
+            methodVisitor.visitLocalVariable(variable.key, "I", null, codeLabel, endLabel, variable.value)
+            methodVisitor.visitInsn(Opcodes.ICONST_0)
+            methodVisitor.visitVarInsn(Opcodes.ISTORE, variable.value)
+            mapped.add(variable.key)
         }
     }
 
@@ -111,7 +84,6 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
         classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "stack", "Ljava/util/Stack;", null, null)
 
         variables["*"] = 0
-        types["*"] = Type.Int
 
         // generate the labels
         ast.statements.forEach {
@@ -120,10 +92,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
             }
         }
 
-        do {
-            resolveVariables(ast)
-        }
-        while (types.values.contains(Type.None))
+        resolveVariables(ast)
 
         // static initializer
         val clinit = classWriter.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null)
@@ -139,7 +108,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
         clinit.visitFieldInsn(Opcodes.PUTSTATIC, className, "stack", "Ljava/util/Stack;")
 
         clinit.visitInsn(Opcodes.RETURN)
-        clinit.visitMaxs(1, 0)
+        clinit.visitMaxs(0, 0)
 
         clinit.visitEnd()
 
@@ -165,15 +134,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
         if (variables[expr.name] == null) {
             throw RuntimeException("Undefined variable '${expr.name}'.")
         }
-        when (types[expr.name]!!) {
-            Type.Int -> {
-                methodVisitor.visitVarInsn(Opcodes.ILOAD, variables[expr.name]!!)
-            }
-            Type.String -> {
-                methodVisitor.visitVarInsn(Opcodes.ALOAD, variables[expr.name]!!)
-            }
-            else -> {null!!}
-        }
+        methodVisitor.visitVarInsn(Opcodes.ILOAD, variables[expr.name]!!)
     }
 
     override fun visitNumber(expr: NumberLiteral) {
@@ -238,30 +199,18 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
             methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
             expr.accept(this)
             when (expr) {
-                is NumberLiteral -> {
+                is NumberLiteral, is Variable, is BinOp -> {
                     methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(I)V", false)
                 }
                 is StringLiteral -> {
                     methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false)
                 }
-                is Variable -> {
-                    when (types[expr.name]!!) {
-                        Type.Int -> {
-                            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(I)V", false)
-                        }
-                        Type.String -> {
-                            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false)
-                        }
-                        else -> {null!!}
-                    }
-                }
-                is BinOp -> {
-                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(I)V", false)
-                }
             }
         }
-        methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
-        methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println", "()V", false)
+        if(stmt.newline) {
+            methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
+            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println", "()V", false)
+        }
     }
 
     override fun visitIfStmt(stmt: IfStmt) {
@@ -280,7 +229,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
     override fun visitInputStmt(stmt: InputStmt) {
         for (variable in stmt.vars) {
-            if (variables[(variable as Variable).name] == null) {
+            if (variables[variable.name] == null) {
                 throw RuntimeException("Undefined variable '${variable.name}'.")
             }
             methodVisitor.visitTypeInsn(Opcodes.NEW, "java/util/Scanner")
@@ -294,15 +243,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
     override fun visitLetStmt(stmt: LetStmt) {
         stmt.expr.accept(this)
-        when (types[stmt.name]!!) {
-            Type.Int -> {
-                methodVisitor.visitVarInsn(Opcodes.ISTORE, variables[stmt.name]!!)
-            }
-            Type.String -> {
-                methodVisitor.visitVarInsn(Opcodes.ASTORE, variables[stmt.name]!!)
-            }
-            else -> {null!!}
-        }
+        methodVisitor.visitVarInsn(Opcodes.ISTORE, variables[stmt.name]!!)
     }
 
     override fun visitGosubStmt(stmt: GosubStmt) {
@@ -403,12 +344,16 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     override fun visitMultiStmt(stmt: MultiStmt) {
         if(stmt.stmts.any { (it is GotoStmt || it is GosubStmt || it is ReturnStmt)
                     && stmt.stmts.last() != it }) {
-            println(stmt.stmts.last())
-            throw RuntimeException("Goto, Gosub and Return statements must be the last statement in a line.")
+            val lastIndex = stmt.stmts.zip(stmt.stmts.indices).findLast { it.first is GotoStmt || it.first is GosubStmt || it.first is ReturnStmt }!!.second
+            if (stmt.stmts.subList(lastIndex + 1, stmt.stmts.size).all { it !is EmptyStmt }) {
+                throw RuntimeException("Goto, Gosub and Return statements must be the last statement in a line.")
+            }
         }
         stmt.stmts.forEach {
             it.accept(this)
         }
     }
+
+    override fun visitEmptyStmt(stmt: EmptyStmt) {}
 
 }

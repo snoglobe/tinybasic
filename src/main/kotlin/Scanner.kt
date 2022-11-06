@@ -4,7 +4,7 @@ data class Token(var type: TokenType, var lexeme: String, var literal: Any?, var
 
 enum class TokenType {
     STRING, NUMBER, LESS_THAN, GREATER_THAN, LESS_EQUAL, GREATER_EQUAL, EQUAL, PLUS, MINUS, TIMES, DIVIDE, LPAREN, RPAREN,
-    PRINT, IF, GOTO, INPUT, LET, GOSUB, RETURN, END, VAR, COMMA, THEN, NOTEQUAL,
+    PRINT, IF, GOTO, INPUT, LET, GOSUB, RETURN, END, VAR, COMMA, THEN, NOTEQUAL, REM, SEMICOLON,
     EOF
 }
 
@@ -23,6 +23,7 @@ class Scanner(var text: String) {
         "return" to RETURN,
         "end" to END,
         "then" to THEN,
+        "rem" to REM,
     )
 
     private var tokens = mutableListOf<Token>()
@@ -98,6 +99,9 @@ class Scanner(var text: String) {
             ')' -> {
                 addToken(RPAREN)
             }
+            ';' -> {
+                addToken(SEMICOLON)
+            }
             else -> {
                 when {
                     isDigit(c) -> number()
@@ -170,6 +174,13 @@ class Scanner(var text: String) {
         }
         val text = text.substring(start, current)
         val type = keywords[text.lowercase()] ?: VAR
-        addToken(type)
+        if (type == REM) {
+            addToken(REM)
+            while (peek() != '\n' && !isAtEnd()) {
+                advance()
+            }
+        } else {
+            addToken(type)
+        }
     }
 }

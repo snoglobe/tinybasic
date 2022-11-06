@@ -40,6 +40,10 @@ class Parser(var tokens: List<Token>) {
         }
     }
 
+    private fun empty(): EmptyStmt {
+        return EmptyStmt()
+    }
+
     private fun statement(): Stmt {
         return when (peek()) {
             PRINT -> printStatement()
@@ -50,6 +54,7 @@ class Parser(var tokens: List<Token>) {
             INPUT -> inputStatement()
             RETURN -> returnStatement()
             END -> endStatement()
+            REM -> { eat(REM); empty() }
             VAR -> {
                 val name = eat(VAR).lexeme
                 eat(EQUAL)
@@ -63,7 +68,11 @@ class Parser(var tokens: List<Token>) {
     private fun printStatement(): PrintStmt {
         eat(PRINT)
         val expr = exprlist()
-        return PrintStmt(expr)
+        val newline = if (peek(SEMICOLON)) {
+            eat(SEMICOLON)
+            false
+        } else true
+        return PrintStmt(expr, newline)
     }
 
     private fun letStatement(): LetStmt {
@@ -151,17 +160,16 @@ class Parser(var tokens: List<Token>) {
         }
     }
 
-    private fun vara(): Expr {
+    private fun vara(): Variable {
         return when (peek()) {
             VAR -> Variable(eat(VAR).lexeme)
-            STRING -> StringLiteral(eat(STRING).literal as String)
-            else -> {throw Exception("Expected variable or string, got ${tokens[current].type} at line ${tokens[current].position.first}.")}
+            else -> {throw Exception("Expected variable, got ${tokens[current].type} at line ${tokens[current].position.first}.")}
         }
     }
 
-    private fun varlist(): List<Expr> {
-        val vars = mutableListOf<Expr>()
-        while (peek(VAR) || peek(STRING)) {
+    private fun varlist(): List<Variable> {
+        val vars = mutableListOf<Variable>()
+        while (peek(VAR)) {
             vars.add(vara())
             if (peek(COMMA)) {
                 eat(COMMA)
@@ -175,13 +183,26 @@ class Parser(var tokens: List<Token>) {
             eat(LPAREN)
             expr().also { eat(RPAREN) }
         } else {
-            expr()
+            if (peek(STRING)) {
+                StringLiteral(eat(STRING).literal as String)
+            } else {
+                expr()
+            }
         }
         val exprs = mutableListOf<Expr>()
         exprs.add(expr)
         while (peek() == COMMA) {
             eat(COMMA)
-            exprs.add(expr())
+            exprs.add(if (peek(LPAREN)) {
+                eat(LPAREN)
+                expr().also { eat(RPAREN) }
+            } else {
+                if (peek(STRING)) {
+                    StringLiteral(eat(STRING).literal as String)
+                } else {
+                    expr()
+                }
+            })
         }
         return exprs
     }
