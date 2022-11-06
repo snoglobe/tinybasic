@@ -34,7 +34,7 @@ fun main(args: Array<String>) {
             val lines = mutableListOf<String>()
             while (true) {
                 print("] ")
-                val line = readLine()!!
+                val line = readLine() ?: break@outer
                 if (line == "RUN" || line == "run") break
                 if (line == "END" || line == "end") break@outer
                 if (line == "LIST" || line == "list") {
