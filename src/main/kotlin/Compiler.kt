@@ -113,6 +113,9 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
         variables["*"] = 0
         types["*"] = Type.Int
 
+        // Fix out of order line numbers
+        ast.statements.sortBy { if (it is LineStmt) it.line else null }
+
         // generate the labels
         ast.statements.forEach {
             if(it is LineStmt) {
