@@ -15,23 +15,14 @@ class Scanner(var text: String) {
 
     var keywords = mapOf(
         "print" to PRINT,
-        "PRINT" to PRINT,
         "if" to IF,
-        "IF" to IF,
         "goto" to GOTO,
-        "GOTO" to GOTO,
         "input" to INPUT,
-        "INPUT" to INPUT,
         "let" to LET,
-        "LET" to LET,
         "gosub" to GOSUB,
-        "GOSUB" to GOSUB,
         "return" to RETURN,
-        "RETURN" to RETURN,
         "end" to END,
-        "END" to END,
         "then" to THEN,
-        "THEN" to THEN,
     )
 
     private var tokens = mutableListOf<Token>()
@@ -178,7 +169,7 @@ class Scanner(var text: String) {
             advance()
         }
         val text = text.substring(start, current)
-        val type = keywords[text] ?: VAR
+        val type = keywords[text.lowercase()] ?: VAR
         addToken(type)
     }
 }
