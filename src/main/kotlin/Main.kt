@@ -35,9 +35,9 @@ fun main(args: Array<String>) {
             while (true) {
                 print("] ")
                 val line = readLine() ?: break@outer
-                if (line == "RUN" || line == "run") break
-                if (line == "END" || line == "end") break@outer
-                if (line == "LIST" || line == "list") {
+                if (line.lowercase() == "run") break
+                if (line.lowercase() == "end") break@outer
+                if (line.lowercase() == "list") {
                     lines.forEach { println(it) }
                     continue
                 }
