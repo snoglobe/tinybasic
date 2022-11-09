@@ -79,10 +79,6 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     private fun beginCompile(ast: ProgramStmt) {
-        classWriter.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
-        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "lineNumber", "I", null, 1)
-        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "stack", "Ljava/util/Stack;", null, null)
-
         variables["*"] = 0
 
         // Fix out of order line numbers
@@ -97,11 +93,19 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
         resolveVariables(ast)
 
+        currentLine = labels.keys.first()
+
+        classWriter.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "lineNumber", "I", null, currentLine)
+        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "stack", "Ljava/util/Stack;", null, null)
+
         // static initializer
         val clinit = classWriter.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null)
         clinit.visitCode()
 
-        currentLine = labels.keys.first()
+        // NOTE: The bellow two lines are completely unneeded, except that FernFlower wouldn't pick up the default value
+        //       of the lineNumber variable.
+        //       procyon-decompiler does fine
         clinit.visitLdcInsn(currentLine)
         clinit.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
 
