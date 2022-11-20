@@ -202,21 +202,22 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     override fun visitPrintStmt(stmt: PrintStmt) {
-        for(expr in stmt.exprs) {
-            methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
+        methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
+        for ((i, expr) in stmt.exprs.withIndex()) {
+            val printCall = if (i != stmt.exprs.size - 1) {
+                methodVisitor.visitInsn(Opcodes.DUP)
+                "print"
+            } else if (stmt.newline) "println" else "print"
+
             expr.accept(this)
             when (expr) {
                 is NumberLiteral, is Variable, is BinOp -> {
-                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(I)V", false)
+                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", printCall, "(I)V", false)
                 }
                 is StringLiteral -> {
-                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false)
+                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", printCall, "(Ljava/lang/String;)V", false)
                 }
             }
-        }
-        if(stmt.newline) {
-            methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
-            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println", "()V", false)
         }
     }
 
