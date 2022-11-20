@@ -344,11 +344,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
         // set line number to next line
         labels[nextLine].let {
-            if (it != null) {
-                methodVisitor.visitLdcInsn(nextLine)
-                methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
-                methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
-            } else {
+            if (it == null) {
                 methodVisitor.visitInsn(Opcodes.RETURN)
             }
         }
