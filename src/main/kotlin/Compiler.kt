@@ -230,9 +230,14 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     override fun visitGotoStmt(stmt: GotoStmt) {
-        stmt.line.accept(this)
-        methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
-        methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
+        if (stmt.line is NumberLiteral) {
+            val labelOfLine = labels[stmt.line.value.toInt()]
+            methodVisitor.visitJumpInsn(Opcodes.GOTO, labelOfLine)
+        } else {
+            stmt.line.accept(this)
+            methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
+            methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
+        }
     }
 
     override fun visitInputStmt(stmt: InputStmt) {
