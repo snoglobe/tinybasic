@@ -79,10 +79,6 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     private fun beginCompile(ast: ProgramStmt) {
-        classWriter.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
-        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "lineNumber", "I", null, 1)
-        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "stack", "Ljava/util/Stack;", null, null)
-
         variables["*"] = 0
 
         // Fix out of order line numbers
@@ -97,11 +93,19 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
         resolveVariables(ast)
 
+        currentLine = labels.keys.first()
+
+        classWriter.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "lineNumber", "I", null, currentLine)
+        classWriter.visitField(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "stack", "Ljava/util/Stack;", null, null)
+
         // static initializer
         val clinit = classWriter.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null)
         clinit.visitCode()
 
-        currentLine = labels.keys.first()
+        // NOTE: The bellow two lines are completely unneeded, except that FernFlower wouldn't pick up the default value
+        //       of the lineNumber variable.
+        //       procyon-decompiler does fine
         clinit.visitLdcInsn(currentLine)
         clinit.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
 
@@ -198,21 +202,22 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     override fun visitPrintStmt(stmt: PrintStmt) {
-        for(expr in stmt.exprs) {
-            methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
+        methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
+        for ((i, expr) in stmt.exprs.withIndex()) {
+            val printCall = if (i != stmt.exprs.size - 1) {
+                methodVisitor.visitInsn(Opcodes.DUP)
+                "print"
+            } else if (stmt.newline) "println" else "print"
+
             expr.accept(this)
             when (expr) {
                 is NumberLiteral, is Variable, is BinOp -> {
-                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(I)V", false)
+                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", printCall, "(I)V", false)
                 }
                 is StringLiteral -> {
-                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "print", "(Ljava/lang/String;)V", false)
+                    methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", printCall, "(Ljava/lang/String;)V", false)
                 }
             }
-        }
-        if(stmt.newline) {
-            methodVisitor.visitFieldInsn(Opcodes.GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;")
-            methodVisitor.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println", "()V", false)
         }
     }
 
@@ -225,9 +230,14 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
     }
 
     override fun visitGotoStmt(stmt: GotoStmt) {
-        stmt.line.accept(this)
-        methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
-        methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
+        if (stmt.line is NumberLiteral) {
+            val labelOfLine = labels[stmt.line.value.toInt()]
+            methodVisitor.visitJumpInsn(Opcodes.GOTO, labelOfLine)
+        } else {
+            stmt.line.accept(this)
+            methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
+            methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
+        }
     }
 
     override fun visitInputStmt(stmt: InputStmt) {
@@ -334,11 +344,7 @@ class Compiler(private val ast: ProgramStmt) : Expr.Visitor<Unit>, Stmt.Visitor 
 
         // set line number to next line
         labels[nextLine].let {
-            if (it != null) {
-                methodVisitor.visitLdcInsn(nextLine)
-                methodVisitor.visitFieldInsn(Opcodes.PUTSTATIC, className, "lineNumber", "I")
-                methodVisitor.visitJumpInsn(Opcodes.GOTO, codeLabel)
-            } else {
+            if (it == null) {
                 methodVisitor.visitInsn(Opcodes.RETURN)
             }
         }
